@@ -1,0 +1,88 @@
+--Crear base de datos
+CREATE DATABASE nodolocalproyecto3db2;
+
+--Se crea la extensión postgis
+CREATE EXTENSION postgis;
+
+--Tabla empresas
+CREATE TABLE empresa(
+	id_empresa INT PRIMARY KEY,
+	nombre VARCHAR (50) NOT NULL,
+	correo VARCHAR (50) UNIQUE,
+	departamentos JSON NOT NULL
+);
+
+--Se le agrega la columna Geometry a la tabla empresa
+SELECT AddGeometryColumn ('public','empresa','geom',4326,'POINT',2,true);
+
+--Tabla empleado
+CREATE TABLE empleado(
+	id_empleado INT PRIMARY KEY,
+	nombre VARCHAR (50) NOT NULL,
+	apellido1 VARCHAR (50) NOT NULL,
+	apellido2 VARCHAR (50) NOT NULL,
+	fecha_nacimiento DATE,
+	estado_civil VARCHAR (50) NULL,
+	genero CHAR(1),
+	id_empresa INT NOT NULL,
+	CONSTRAINT fk_empresa FOREIGN KEY (id_empresa) REFERENCES empresa (id_empresa)
+);
+
+--Tabla de telefono de la empresa con sus extensiones
+CREATE TABLE telefonos(
+	id_empresa INT PRIMARY KEY,
+	num_telefono VARCHAR(20),
+	extensiones JSON NULL,
+	FOREIGN KEY (id_empresa) REFERENCES empresa
+);
+
+--Inserciones de ejemplo
+--Empresas
+INSERT INTO empresa VALUES (1,'Empresa1','correo@empresa1.com','{"nombre":"Contabilidad"}'::JSON);
+INSERT INTO empresa VALUES (2,'Empresa2','correo@empresa2.com','{"nombre":"RRHH"}'::JSON);
+SELECT * FROM empresa;
+--Telefono de empresa
+INSERT INTO telefonos VALUES (1,'123456789','{"ext":"123"}'::JSON);
+INSERT INTO telefonos VALUES (2,'987654321','{"ext":"321"}'::JSON);
+SELECT * FROM telefonos;
+--Empleado
+INSERT INTO empleado VALUES (1,'nombreEmpleado1','apellido1Empleado1','apellido2Empleado1','2020-12-14','Soltero','F',1);
+INSERT INTO empleado VALUES (2,'nombreEmpleado2','apellido1Empleado2','apellido2Empleado2','2020-12-14','Soltero','M',2);
+SELECT * FROM empleado;
+
+--Vista para ver solo los datos del nodoLocal 
+CREATE OR REPLACE VIEW vista_empresasnodolocal
+AS
+	SELECT empr.*,tel.num_telefono,tel.extensiones,
+	empl.nombre AS nombre_empleado,empl.apellido1,empl.apellido2,empl.fecha_nacimiento,empl.estado_civil,empl.genero
+	FROM empresa AS empr
+	INNER JOIN telefonos AS tel ON (empr.id_empresa=tel.id_empresa) 
+	INNER JOIN empleado AS empl ON (empr.id_empresa=empl.id_empresa)
+
+SELECT * FROM vista_empresasnodolocal
+
+--Función que actualiza en el nodo local segun los valores que llegan de QGIS
+CREATE OR REPLACE FUNCTION update_vista_empresasnodolocal()
+    RETURNS trigger
+    LANGUAGE 'plpgsql'
+AS 
+$BODY$
+BEGIN
+	UPDATE empresa SET nombre=NEW.nombre, correo=NEW.correo, departamentos=NEW.departamentos, geom=NEW.geom WHERE id_empresa=NEW.id_empresa;
+	UPDATE telefonos SET num_telefono=NEW.num_telefono, extensiones=NEW.extensiones WHERE id_empresa=NEW.id_empresa;
+	UPDATE empleado SET nombre=NEW.nombre_empleado, apellido1=NEW.apellido1, apellido2=NEW.apellido2, fecha_nacimiento=NEW.fecha_nacimiento, estado_civil=NEW.estado_civil, genero=NEW.genero WHERE id_empresa=NEW.id_empresa; 
+RETURN NEW;
+END;
+$BODY$;
+
+CREATE TRIGGER trigger_update_vista_empresasnodolocal
+INSTEAD OF insert or update or delete
+ON  vista_empresasnodolocal
+FOR EACH ROW
+EXECUTE PROCEDURE update_vista_empresasnodolocal();
+
+
+
+
+
+
