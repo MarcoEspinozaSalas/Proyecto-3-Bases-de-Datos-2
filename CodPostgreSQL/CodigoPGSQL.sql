@@ -1,6 +1,6 @@
 --------------------------------------------------------------------NodoLocal--------------------------------------------------------------------
 --Crear base de datos
-CREATE DATABASE nodolocalproyecto3db2;
+CREATE DATABASE localproyecto3db2;
 
 --Se crea la extensión postgis
 CREATE EXTENSION postgis;
@@ -17,8 +17,9 @@ CREATE TABLE empresa(
 SELECT AddGeometryColumn ('public','empresa','geom',4326,'POINT',2,true);
 
 --Tabla empleado
+drop table empleado
 CREATE TABLE empleado(
-	id_empleado SERIAL PRIMARY KEY,
+	id_empleado int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 	nombre VARCHAR (50) NOT NULL,
 	apellido1 VARCHAR (50) NOT NULL,
 	apellido2 VARCHAR (50) NOT NULL,
@@ -47,8 +48,10 @@ INSERT INTO telefonos VALUES (1,'123456789','{"ext":"123"}'::JSON);
 INSERT INTO telefonos VALUES (2,'987654321','{"ext":"321"}'::JSON);
 SELECT * FROM telefonos;
 --Empleado
-INSERT INTO empleado VALUES ('nombreEmpleado1','apellido1Empleado1','apellido2Empleado1','2020-12-14','Soltero','F',1);
-INSERT INTO empleado VALUES ('nombreEmpleado2','apellido1Empleado2','apellido2Empleado2','2020-12-14','Soltero','M',2);
+INSERT INTO empleado(nombre,apellido1,apellido2,fecha_nacimiento,estado_civil,genero,id_empresa) 
+VALUES ('nombreEmpleado1','apellido1Empleado1','apellido2Empleado1','2020-12-14','Soltero','F',1);
+INSERT INTO empleado(nombre,apellido1,apellido2,fecha_nacimiento,estado_civil,genero,id_empresa) 
+VALUES ('nombreEmpleado2','apellido1Empleado2','apellido2Empleado2','2020-12-14','Soltero','M',2);
 SELECT * FROM empleado;
 
 --Vista para ver solo los datos del nodoLocal 
@@ -110,7 +113,7 @@ GRANT USAGE ON FOREIGN SERVER leoviquez_b2p3 TO remote_user;
 select dblink_connect('myconn', 'leoviquez_b2p3');
 select dblink('myconn','begin');
 
-select * from dblink('myconn','select id,nombre from s_data.empresas') AS t(id int,name VARCHAR);
+select * from dblink('myconn','select id,nombre from s_data.empresas where id=6901') AS t(id int,name VARCHAR);
 
 select c.id,c.nombre,el.nombre from vista_empresasnodolocal el right outer join (
 	select * 
@@ -133,6 +136,9 @@ CREATE OR REPLACE FUNCTION insert_vista_empresas()
 		id_empresa int;
 		valor_innecesario int;
 	BEGIN
+		if(select count(*) from dblink_get_connections() where dblink_get_connections() ='{myconn}')>0 then 
+		perform dblink_disconnect('myconn');
+		end if;
 		perform dblink_connect('myconn', 'leoviquez_b2p3');
 
 		perform dblink('myconn','begin');
@@ -146,24 +152,18 @@ CREATE OR REPLACE FUNCTION insert_vista_empresas()
 		select * into valor_innecesario from dblink('myconn',sql) as result(respuesta int);
 		raise notice 'Detalles de empresa registrados en el servidor central';
 
-		insert into empresas (id,nombre,geom) values (id_empresa,NEW.nombre,NEW.geom);
-		insert into empleado (nombre_empleado,
-							  apellido1,
-							  apellido2,
-							  fecha_nacimiento,
-							  estado_civil,
-							  genero,
-							  id_empresa) 
+		insert into empresa (id_empresa,nombre,correo,departamentos,geom) values (id_empresa,NEW.nombre,NEW.correo,NEW.departamentos,NEW.geom);
+		insert into empleado (nombre,apellido1,apellido2,fecha_nacimiento,estado_civil,genero,id_empresa) 
 							  values (
 								  NEW.nombre_empleado,
 								  NEW.apellido1,
-								  NEW.apellido2
+								  NEW.apellido2,
 								  NEW.fecha_nacimiento,
 								  NEW.estado_civil,
 								  NEW.genero,
 								  id_empresa);
-
-		perform dblink_exec('myconn','end;');
+		INSERT INTO telefonos (id_empresa,num_telefono,extensiones) VALUES (id_empresa, NEW.num_telefono,NEW.extensiones);
+		perform dblink('myconn','end');
 		perform dblink_disconnect('myconn');
 
 	RETURN NEW;
@@ -171,9 +171,11 @@ CREATE OR REPLACE FUNCTION insert_vista_empresas()
 	$BODY$;
 
 CREATE TRIGGER trigger_insert_vista_empresasnodolocal
-	INSTEAD OF insert or update or delete
+	INSTEAD OF insert 
 	ON  vista_empresasnodolocal
 	FOR EACH ROW
 	EXECUTE PROCEDURE insert_vista_empresas();
+	
+drop trigger trigger_insert_vista_empresasnodolocal on vista_empresasnodolocal
 
 
