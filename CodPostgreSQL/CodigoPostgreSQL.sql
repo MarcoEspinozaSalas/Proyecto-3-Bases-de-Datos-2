@@ -63,8 +63,26 @@ AS
 	INNER JOIN telefonos AS tel ON (empr.id_empresa=tel.id_empresa) 
 	INNER JOIN empleado AS empl ON (empr.id_empresa=empl.id_empresa)
 
-SELECT * FROM vista_empresasnodolocal
+CREATE TABLE infoEmpresas(
+	id bigint PRIMARY KEY,
+	empresa varchar,
+	geom geometry(Point, 4326)
+);
+SELECT AddGeometryColumn ('public','infoEmpresas','geom',4326,'POINT',2,true);
+---Insert
+select dblink_connect('myconn', 'leoviquez_b2p3');
+--Insert para llenar la tabla con todas las empresas
+Insert into infoEmpresas(id,empresa,geom) select * from dblink('myconn','select id,empresa,geom from public.vista_empresas') AS t(id bigint,empresa VARCHAR, geom geometry(POINT,4326));
+select dblink_disconnect('myconn');
+Select * from infoEmpresas
 
+CREATE OR REPLACE VIEW vista_verTodasLasEmpresas
+AS
+	select * from infoEmpresas
+
+--drop VIEW vista_verTodasLasEmpresas
+SELECT * FROM vista_empresasnodolocal
+SELECT * FROM vista_verTodasLasEmpresas
 --Función que actualiza en el nodo local segun los valores que llegan de QGIS
 CREATE OR REPLACE FUNCTION update_vista_empresasnodolocal()
     RETURNS trigger
@@ -176,6 +194,52 @@ CREATE TRIGGER trigger_insert_vista_empresasnodolocal
 	FOR EACH ROW
 	EXECUTE PROCEDURE insert_vista_empresas();
 	
-drop trigger trigger_insert_vista_empresasnodolocal on vista_empresasnodolocal
+--drop trigger trigger_insert_vista_empresasnodolocal on vista_empresasnodolocal
 
+CREATE OR REPLACE FUNCTION eliminar_vista_empresas()
+    RETURNS trigger
+    LANGUAGE 'plpgsql'
+	AS 
+	$BODY$
+	Declare
+		sql varchar(2000);
+		id_empresa1 int;
+		id_empresa2 int;
+	BEGIN
+		if(select count(*) from dblink_get_connections() where dblink_get_connections() ='{myconn}')>0 then 
+		perform dblink_disconnect('myconn');
+		end if;
+		perform dblink_connect('myconn', 'leoviquez_b2p3');
+
+		perform dblink('myconn','begin');
+		Select old.id_empresa into id_empresa1;
+
+		sql := 'SELECT elimina_empresa (''' || old.id_empresa || ''',''P3B2ALM'',''P3B2ALM'')';
+		select * into id_empresa2 from dblink('myconn',sql) as respuesta(id int);
+		raise notice 'Empresa eliminada en el servidor central (id:%)',id_empresa1;
+		
+		delete from empleado where id_empresa = id_empresa1;
+		delete from telefonos where id_empresa = id_empresa1;
+		delete from empresa where id_empresa = id_empresa1;
+		
+		perform dblink('myconn','end');
+		perform dblink_disconnect('myconn');
+
+	RETURN NEW;
+	END;
+	$BODY$;
+
+CREATE TRIGGER trigger_eliminar_empresas
+	INSTEAD OF delete 
+	ON  vista_empresasnodolocal
+	FOR EACH ROW
+	EXECUTE PROCEDURE eliminar_vista_empresas();
+
+SELECT * FROM empresa;
+SELECT * FROM empleado;
+SELECT * FROM telefonos;
+
+select dblink_connect('myconn', 'leoviquez_b2p3');
+select * from dblink('myconn','select id,nombre from s_data.empresas where id=6934') AS t(id int,name VARCHAR);
+select dblink_disconnect('myconn');
 
