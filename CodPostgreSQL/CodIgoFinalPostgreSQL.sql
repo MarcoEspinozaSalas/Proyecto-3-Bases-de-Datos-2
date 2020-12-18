@@ -42,17 +42,48 @@ CREATE TABLE telefonos(
 --Empresas
 INSERT INTO empresa VALUES (1,'Empresa1','correo@empresa1.com','{"nombre":"Contabilidad"}'::JSON);
 INSERT INTO empresa VALUES (2,'Empresa2','correo@empresa2.com','{"nombre":"RRHH"}'::JSON);
+--INSERT INTO empresa VALUES (4,'Empresa4','correo@empresa4.com','{"nombre":"RRHH"}'::JSON);
 SELECT * FROM empresa;
 --Telefono de empresa
 INSERT INTO telefonos VALUES (1,'123456789','{"ext":"123"}'::JSON);
 INSERT INTO telefonos VALUES (2,'987654321','{"ext":"321"}'::JSON);
+--INSERT INTO telefonos VALUES (4,'987654321','{"ext":"321"}'::JSON);
 SELECT * FROM telefonos;
 --Empleado
 INSERT INTO empleado(nombre,apellido1,apellido2,fecha_nacimiento,estado_civil,genero,id_empresa) 
 VALUES ('nombreEmpleado1','apellido1Empleado1','apellido2Empleado1','2020-12-14','Soltero','F',1);
 INSERT INTO empleado(nombre,apellido1,apellido2,fecha_nacimiento,estado_civil,genero,id_empresa) 
 VALUES ('nombreEmpleado2','apellido1Empleado2','apellido2Empleado2','2020-12-14','Soltero','M',2);
+INSERT INTO empleado(nombre,apellido1,apellido2,fecha_nacimiento,estado_civil,genero,id_empresa) 
+VALUES ('nombreEmpleado4','apellido1Empleado4','apellido2Empleado4','2020-12-14','Soltero','M',4);
 SELECT * FROM empleado;
+
+
+
+--------------------------------------------------------------------ConexionNodoCentral--------------------------------------------------------------------
+
+-----------------------------------------Creacion de la conexion remota-----------------------------------------
+
+--instalación de librería dblink
+CREATE EXTENSION dblink;
+
+--creación de usuario quien tendrá privilegios de usar el servidor vinuclado.
+CREATE USER remote_user WITH PASSWORD 'admin';
+
+--Creación de servidor remoto
+
+CREATE SERVER leoviquez_b2p3
+FOREIGN DATA WRAPPER dblink_fdw
+OPTIONS (host 'leoviquez.com', dbname 'p3_empresas', port '5432');
+
+--Asignación de usuario de acceso remoto
+CREATE USER MAPPING FOR remote_user
+SERVER leoviquez_b2p3
+OPTIONS (user 'basesII', password '12345');
+
+--Asignación de privilegios al servidor remoto
+GRANT USAGE ON FOREIGN SERVER leoviquez_b2p3 TO remote_user;
+
 
 --Vista para ver solo los datos del nodoLocal 
 CREATE OR REPLACE VIEW vista_empresasnodolocal
@@ -68,7 +99,7 @@ CREATE TABLE infoEmpresas(
 	empresa varchar,
 	geom geometry(Point, 4326)
 );
-SELECT AddGeometryColumn ('public','infoEmpresas','geom',4326,'POINT',2,true);
+
 ---Insert
 select dblink_connect('myconn', 'leoviquez_b2p3');
 --Insert para llenar la tabla con todas las empresas
@@ -103,29 +134,6 @@ CREATE TRIGGER trigger_update_vista_empresasnodolocal
 	FOR EACH ROW
 	EXECUTE PROCEDURE update_vista_empresasnodolocal();
 
---------------------------------------------------------------------ConexionNodoCentral--------------------------------------------------------------------
-
------------------------------------------Creacion de la conexion remota-----------------------------------------
-
---instalación de librería dblink
-CREATE EXTENSION dblink;
-
---creación de usuario quien tendrá privilegios de usar el servidor vinuclado.
-CREATE USER remote_user WITH PASSWORD 'admin';
-
---Creación de servidor remoto
-
-CREATE SERVER leoviquez_b2p3
-FOREIGN DATA WRAPPER dblink_fdw
-OPTIONS (host 'leoviquez.com', dbname 'p3_empresas', port '5432');
-
---Asignación de usuario de acceso remoto
-CREATE USER MAPPING FOR remote_user
-SERVER leoviquez_b2p3
-OPTIONS (user 'basesII', password '12345');
-
---Asignación de privilegios al servidor remoto
-GRANT USAGE ON FOREIGN SERVER leoviquez_b2p3 TO remote_user;
 
 -----------------------------------------Obtener datos de la conexion remota prueba-----------------------------------------
 select dblink_connect('myconn', 'leoviquez_b2p3');
@@ -240,6 +248,6 @@ SELECT * FROM empleado;
 SELECT * FROM telefonos;
 
 select dblink_connect('myconn', 'leoviquez_b2p3');
-select * from dblink('myconn','select id,nombre from s_data.empresas where id=6934') AS t(id int,name VARCHAR);
+select * from dblink('myconn','select id,nombre from s_data.empresas where id=6936') AS t(id int,name VARCHAR);
 select dblink_disconnect('myconn');
 
